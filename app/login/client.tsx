@@ -10,6 +10,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { Mail, Lock, AlertCircle, ArrowRight, Eye, EyeOff } from "lucide-react"
 import Image from "next/image"
 import { storeAccessToken, getDeviceId, collectDeviceMeta, tryRefreshTokens, getAccessToken } from "@/lib/auth-client"
+import { triggerAuthRefresh } from "@/hooks/useAuth"
 import { useEffect } from "react"
 
 export default function LoginClient() {
@@ -84,6 +85,9 @@ export default function LoginClient() {
       const isBooker = sessionData?.user?.isBooker || false
 
       console.log("✅ Session created successfully")
+
+      // Trigger auth context to refetch user data
+      triggerAuthRefresh()
 
       // Step 4: Route based on booker status
       if (!isBooker) {

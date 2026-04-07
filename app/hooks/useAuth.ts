@@ -18,9 +18,17 @@ type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+// Global event emitter for auth changes
+let authRefreshListeners: Array<() => void> = []
+
+export function triggerAuthRefresh() {
+  authRefreshListeners.forEach(callback => callback())
+}
+
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User>(null)
   const [loading, setLoading] = useState(true)
+  const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
     const initializeAuth = async () => {
@@ -58,6 +66,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         } else if (response.status === 401) {
           // Token is invalid, clear it
           clearAccessToken()
+          setUser(null)
         }
       } catch (err) {
         console.error("Failed to initialize auth:", err)
@@ -67,6 +76,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
 
     initializeAuth()
+  }, [refreshKey])
+
+  // Listen for manual auth refresh triggers (e.g., after login)
+  useEffect(() => {
+    const handleAuthRefresh = () => {
+      setRefreshKey(prev => prev + 1)
+    }
+
+    authRefreshListeners.push(handleAuthRefresh)
+
+    return () => {
+      authRefreshListeners = authRefreshListeners.filter(cb => cb !== handleAuthRefresh)
+    }
   }, [])
 
   return createElement(
