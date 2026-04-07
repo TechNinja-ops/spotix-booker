@@ -24,14 +24,21 @@ export default function LoginClient() {
 
   // Attempt silent refresh on mount — if successful, redirect to dashboard
   useEffect(() => {
+    let mounted = true
+
     const attemptSilentRefresh = async () => {
       try {
         // If we already have an access token, attempt to refresh it
         if (getAccessToken()) {
           const refreshed = await tryRefreshTokens()
-          if (refreshed) {
+          if (refreshed && mounted) {
             console.log("✅ Silent refresh successful — redirecting to dashboard")
-            router.push("/dashboard")
+            // Use setTimeout to ensure router is ready
+            setTimeout(() => {
+              if (mounted) {
+                router.push("/dashboard")
+              }
+            }, 0)
           }
         }
       } catch (err) {
@@ -40,6 +47,10 @@ export default function LoginClient() {
     }
 
     attemptSilentRefresh()
+
+    return () => {
+      mounted = false
+    }
   }, [router])
 
   // Validate and normalize redirect URL — prevent open redirects
@@ -86,18 +97,24 @@ export default function LoginClient() {
 
       console.log("✅ Session created successfully")
 
-      // Trigger auth context to refetch user data
-      triggerAuthRefresh()
+      // Trigger auth context to refetch user data (with small delay for stability)
+      setTimeout(() => {
+        triggerAuthRefresh()
+      }, 0)
 
       // Step 4: Route based on booker status
       if (!isBooker) {
         console.warn("⚠️ User is not a booker — redirecting to /not-booker")
-        router.push("/not-booker")
+        setTimeout(() => {
+          router.push("/not-booker")
+        }, 100)
         return
       }
 
       console.log("✅ Redirecting to:", redirect)
-      router.push(redirect)
+      setTimeout(() => {
+        router.push(redirect)
+      }, 100)
     } catch (err: any) {
       console.error("Login error:", err)
 
