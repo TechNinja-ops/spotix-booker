@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, createContext, useContext, ReactNode, createElement } from "react"
-import { authFetch, getAccessToken } from "@/lib/auth-client"
+import { authFetch, getAccessToken, tryRefreshTokens, clearAccessToken } from "@/lib/auth-client"
 
 type User = {
   id: string
@@ -24,16 +24,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     const initializeAuth = async () => {
-      // Check for access token in memory OR in cookie
-      // On first load, token is in cookie but not in memory yet
-      const hasAccessToken = getAccessToken() || (typeof document !== 'undefined' && document.cookie.includes('spotix_at'))
-      
-      if (!hasAccessToken) {
-        setLoading(false)
-        return
-      }
-
       try {
+        // Check if we have an access token in memory
+        let token = getAccessToken()
+        
+        // If not in memory, try to refresh from the httpOnly cookie
+        if (!token) {
+          const refreshed = await tryRefreshTokens()
+          if (!refreshed) {
+            // No valid session
+            setLoading(false)
+            return
+          }
+          token = getAccessToken()
+        }
+
+        if (!token) {
+          setLoading(false)
+          return
+        }
+
         // Fetch user data from our custom auth API
         const response = await authFetch("/api/user/me")
         if (response.ok) {
@@ -45,6 +55,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             fullName: userData.fullName,
             isBooker: userData.isBooker,
           })
+        } else if (response.status === 401) {
+          // Token is invalid, clear it
+          clearAccessToken()
         }
       } catch (err) {
         console.error("Failed to initialize auth:", err)
