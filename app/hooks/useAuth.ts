@@ -24,8 +24,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     const initializeAuth = async () => {
-      // Check if we have a valid access token (set by middleware)
-      if (!getAccessToken()) {
+      // Check for access token in memory OR in cookie
+      // On first load, token is in cookie but not in memory yet
+      const hasAccessToken = getAccessToken() || (typeof document !== 'undefined' && document.cookie.includes('spotix_at'))
+      
+      if (!hasAccessToken) {
         setLoading(false)
         return
       }
