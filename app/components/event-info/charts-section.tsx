@@ -5,12 +5,17 @@ import {
   Area,
   BarChart,
   Bar,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   Legend,
   ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
 } from "recharts"
 
 interface ChartsSectionProps {
@@ -19,6 +24,8 @@ interface ChartsSectionProps {
   ticketSalesByType: any[]
   eventData: any
 }
+
+const COLORS = ["#6b2fa5", "#8b4fc5", "#a86dd4", "#c491e0", "#d9a8e8", "#e9d5ff"]
 
 export default function ChartsSection({
   ticketSalesByDay,
@@ -46,6 +53,11 @@ export default function ChartsSection({
               <Tooltip
                 contentStyle={{ backgroundColor: "#fff", border: "1px solid #e9d5ff", borderRadius: "8px" }}
                 cursor={{ stroke: "#6b2fa5", strokeWidth: 2 }}
+                formatter={(value, name) => {
+                  if (name === "count") return [value, "Tickets Sold"]
+                  if (name === "revenue") return [`₦${Number(value).toLocaleString()}`, "Revenue"]
+                  return [value, name]
+                }}
               />
               <Legend />
               <Area
@@ -62,6 +74,61 @@ export default function ChartsSection({
           <p className="text-center text-gray-500 py-12">No sales data available yet.</p>
         )}
       </div>
+
+      {/* Sales by Ticket Type */}
+      {ticketSalesByType.length > 0 && (
+        <div className="bg-white rounded-lg border border-purple-200 p-6">
+          <h3 className="text-lg font-bold text-gray-900 mb-4">Sales by Ticket Type</h3>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Bar Chart */}
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={ticketSalesByType} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e9d5ff" />
+                <XAxis dataKey="type" stroke="#999" />
+                <YAxis stroke="#999" />
+                <Tooltip
+                  contentStyle={{ backgroundColor: "#fff", border: "1px solid #e9d5ff", borderRadius: "8px" }}
+                  cursor={{ fill: "#f3e8ff" }}
+                  formatter={(value, name) => {
+                    if (name === "count") return [value, "Tickets Sold"]
+                    if (name === "revenue") return [`₦${Number(value).toLocaleString()}`, "Revenue"]
+                    return [value, name]
+                  }}
+                />
+                <Legend />
+                <Bar dataKey="count" name="Tickets Sold" fill="#6b2fa5" radius={[8, 8, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+
+            {/* Pie Chart */}
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie
+                  data={ticketSalesByType}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  label={({ type, count }) => `${type}: ${count}`}
+                  outerRadius={100}
+                  fill="#8884d8"
+                  dataKey="count"
+                >
+                  {ticketSalesByType.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  formatter={(value, name) => {
+                    if (name === "count") return [value, "Tickets Sold"]
+                    if (name === "revenue") return [`₦${Number(value).toLocaleString()}`, "Revenue"]
+                    return [value, name]
+                  }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
 
       {/* Ticket Types */}
       <div className="bg-white rounded-lg border border-purple-200 p-6">

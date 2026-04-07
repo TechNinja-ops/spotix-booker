@@ -6,7 +6,8 @@ import { use, useState, useEffect } from "react"
 import Link from "next/link"
 import { auth } from "@/lib/firebase"
 import { onAuthStateChanged } from "firebase/auth"
-import { ArrowLeft } from "lucide-react"
+import { ArrowLeft, RefreshCw } from "lucide-react"
+import { eventCacheManager } from "@/lib/cache-manager"
 // import { Nav } from "@/components/nav"
 import OverviewTab from "@/components/event-info/overview-tab"
 import AttendeesTab from "@/components/event-info/attendees-tab"
@@ -149,6 +150,7 @@ export default function EventInfoPage({
 
   const [loading, setLoading]             = useState(true)
   const [saving, setSaving]               = useState(false)
+  const [refreshing, setRefreshing]       = useState(false)
   const [currentUser, setCurrentUser]     = useState<any>(null)
   const [eventData, setEventData]         = useState<EventData | null>(null)
   const [attendees, setAttendees]         = useState<AttendeeData[]>([])
@@ -162,6 +164,7 @@ export default function EventInfoPage({
   const [forecast, setForecast]           = useState<ForecastData | null>(null)
   const [editFormData, setEditFormData]   = useState<any>(null)
   const [copiedField, setCopiedField]     = useState<string | null>(null)
+  const [cacheInfo, setCacheInfo]         = useState<{ isCached: boolean; remainingTime: number | null }>({ isCached: false, remainingTime: null })
   const [activeTab, setActiveTab]         = useState<
     "overview" | "eventlink" | "attendees" | "payouts" | "edit" | "discounts" | "merch" | "referrals" | "form" | "responses"
   >("overview")
@@ -187,15 +190,37 @@ export default function EventInfoPage({
   // ── Auth → fetch ───────────────────────────────────────────────────────────
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
-      if (user) { setCurrentUser(user); fetchEventInfo() }
+      if (user) { 
+        setCurrentUser(user)
+        fetchEventInfo()
+      }
       else setLoading(false)
     })
     return () => unsub()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId])
 
-  async function fetchEventInfo() {
+  async function fetchEventInfo(forceRefresh: boolean = false) {
     try {
+      // Check cache if not forcing refresh
+      if (!forceRefresh) {
+        const cachedData = eventCacheManager.get(`event_${eventId}`)
+        if (cachedData) {
+          console.log("[EventInfoPage] Using cached data for event:", eventId)
+          populateEventData(cachedData)
+          const remainingTime = eventCacheManager.getRemainingTime(`event_${eventId}`)
+          setCacheInfo({ isCached: true, remainingTime })
+          setLoading(false)
+          return
+        }
+      }
+
+      // Invalidate cache if forcing refresh
+      if (forceRefresh) {
+        eventCacheManager.invalidate(`event_${eventId}`)
+        setRefreshing(true)
+      }
+
       const res = await fetch(`/api/event/list/${eventId}`)
       if (!res.ok) {
         const { error } = await res.json().catch(() => ({ error: "Unknown error" }))
@@ -203,22 +228,36 @@ export default function EventInfoPage({
         return
       }
       const data = await res.json()
-      setEventData(data.eventData)
-      setBookerBVT(data.bookerBVT ?? "")
-      setAttendees(data.attendees ?? [])
-      setDiscounts(data.discounts ?? [])
-      setPayouts(data.payouts ?? [])
-      setTicketSalesByDay(data.ticketSalesByDay ?? [])
-      setTicketSalesByType(data.ticketSalesByType ?? [])
-      setAvailableBalance(data.availableBalance ?? 0)
-      setTotalPaidOut(data.totalPaidOut ?? 0)
-      setForecast(data.forecast ?? null)
-      setEditFormData({ ...data.eventData, enablePricing: !data.eventData.isFree })
+      
+      // Cache the full response
+      eventCacheManager.set(`event_${eventId}`, data)
+      
+      populateEventData(data)
+      setCacheInfo({ isCached: false, remainingTime: null })
     } catch (e) {
       console.error("[EventInfoPage] fetch failed:", e)
     } finally {
       setLoading(false)
+      setRefreshing(false)
     }
+  }
+
+  function populateEventData(data: any) {
+    setEventData(data.eventData)
+    setBookerBVT(data.bookerBVT ?? "")
+    setAttendees(data.attendees ?? [])
+    setDiscounts(data.discounts ?? [])
+    setPayouts(data.payouts ?? [])
+    setTicketSalesByDay(data.ticketSalesByDay ?? [])
+    setTicketSalesByType(data.ticketSalesByType ?? [])
+    setAvailableBalance(data.availableBalance ?? 0)
+    setTotalPaidOut(data.totalPaidOut ?? 0)
+    setForecast(data.forecast ?? null)
+    setEditFormData({ ...data.eventData, enablePricing: !data.eventData.isFree })
+  }
+
+  const handleRefreshData = () => {
+    fetchEventInfo(true)
   }
 
   // ── Clipboard ──────────────────────────────────────────────────────────────
@@ -396,11 +435,29 @@ export default function EventInfoPage({
 
         {/* Header */}
         <div className="mb-8">
-          <Link href="/events">
-            <button className="flex items-center gap-2 px-4 py-2 border border-slate-300 bg-white text-slate-700 rounded-lg hover:bg-slate-50 transition-colors mb-4">
-              <ArrowLeft size={18} /> Back to Events
-            </button>
-          </Link>
+          <div className="flex items-center justify-between mb-4">
+            <Link href="/events">
+              <button className="flex items-center gap-2 px-4 py-2 border border-slate-300 bg-white text-slate-700 rounded-lg hover:bg-slate-50 transition-colors">
+                <ArrowLeft size={18} /> Back to Events
+              </button>
+            </Link>
+            <div className="flex items-center gap-3">
+              {cacheInfo.isCached && cacheInfo.remainingTime !== null && (
+                <span className="text-xs text-slate-500 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
+                  Cached for {Math.ceil(cacheInfo.remainingTime / 1000)}s
+                </span>
+              )}
+              <button
+                onClick={handleRefreshData}
+                disabled={refreshing}
+                className="flex items-center gap-2 px-4 py-2 border border-slate-300 bg-white text-slate-700 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Refresh event data and invalidate cache"
+              >
+                <RefreshCw size={18} className={refreshing ? "animate-spin" : ""} />
+                {refreshing ? "Refreshing..." : "Refresh"}
+              </button>
+            </div>
+          </div>
           <div className="flex flex-col gap-2">
             <h1 className="text-4xl font-bold text-slate-900">{eventData.eventName}</h1>
             <p className="text-slate-600">{eventData.eventVenue}</p>

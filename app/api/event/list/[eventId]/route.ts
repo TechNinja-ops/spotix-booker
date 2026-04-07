@@ -168,7 +168,18 @@ export async function GET(
   })
 
   // ── Financial figures ──────────────────────────────────────────────────────
-  const totalRevenue = ev.revenue ?? ev.totalRevenue ?? 0
+  // Calculate totalRevenue from ticketPrices and ticket sales if not stored
+  let calculatedRevenue = 0
+  if (attendees.length > 0 && ev.ticketPrices && ev.ticketPrices.length > 0) {
+    for (const attendee of attendees) {
+      const ticketType = ev.ticketPrices.find((t: any) => t.policy === attendee.ticketType)
+      if (ticketType) {
+        calculatedRevenue += Number(ticketType.price)
+      }
+    }
+  }
+  
+  const totalRevenue = ev.totalRevenue ?? ev.revenue ?? calculatedRevenue ?? 0
   const totalPaidOut = ev.totalPaidOut ?? calculatedTotalPaidOut
   const availableRevenue = ev.availableRevenue ?? (totalRevenue - totalPaidOut)
 
@@ -209,21 +220,53 @@ export async function GET(
   }
 
   // ── Chart data ─────────────────────────────────────────────────────────────
-  const salesByDayMap: Record<string, number> = {}
-  for (const a of attendees) {
-    if (a.purchaseDate && a.purchaseDate !== "Unknown") {
-      salesByDayMap[a.purchaseDate] = (salesByDayMap[a.purchaseDate] ?? 0) + 1
+  // Build sales by day chart with actual purchase timestamps
+  const salesByDayMap: Record<string, { count: number; revenue: number }> = {}
+  for (const doc of attendeesSnap.docs) {
+    const a = doc.data()
+    const purchaseDate = a.purchaseDate?.toDate?.() ?? new Date(a.purchaseDate)
+    
+    if (purchaseDate) {
+      const dateStr = purchaseDate.toLocaleDateString("en-US", { 
+        year: "numeric", 
+        month: "short", 
+        day: "numeric" 
+      })
+      
+      const ticketType = ev.ticketPrices?.find((t: any) => t.policy === a.ticketType)
+      const price = Number(ticketType?.price ?? 0)
+      
+      if (!salesByDayMap[dateStr]) {
+        salesByDayMap[dateStr] = { count: 0, revenue: 0 }
+      }
+      salesByDayMap[dateStr].count += 1
+      salesByDayMap[dateStr].revenue += price
     }
   }
+  
   const ticketSalesByDay = Object.entries(salesByDayMap)
-    .map(([date, count]) => ({ date, count }))
+    .map(([date, data]) => ({ date, count: data.count, revenue: data.revenue }))
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
 
-  const salesByTypeMap: Record<string, number> = {}
-  for (const a of attendees) {
-    salesByTypeMap[a.ticketType] = (salesByTypeMap[a.ticketType] ?? 0) + 1
+  // Build sales by type chart
+  const salesByTypeMap: Record<string, { count: number; revenue: number }> = {}
+  for (const doc of attendeesSnap.docs) {
+    const a = doc.data()
+    const ticketType = a.ticketType ?? "Standard"
+    const price = ev.ticketPrices?.find((t: any) => t.policy === ticketType)?.price ?? 0
+    
+    if (!salesByTypeMap[ticketType]) {
+      salesByTypeMap[ticketType] = { count: 0, revenue: 0 }
+    }
+    salesByTypeMap[ticketType].count += 1
+    salesByTypeMap[ticketType].revenue += Number(price)
   }
-  const ticketSalesByType = Object.entries(salesByTypeMap).map(([type, count]) => ({ type, count }))
+  
+  const ticketSalesByType = Object.entries(salesByTypeMap).map(([type, data]) => ({ 
+    type, 
+    count: data.count, 
+    revenue: data.revenue 
+  }))
 
   // ── Weather forecast ───────────────────────────────────────────────────────
   let forecast: object | null = null
